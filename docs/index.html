@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en" data-theme="undertow-deep-current">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Undertow — what moves beneath the surface</title>
+  <meta name="description" content="Undertow: rootkit and compromise indicator checks in Rust — ld.so.preload, world-writable files, SUID/module/persistence drift, and pacman integrity.">
+  <meta name="theme-color" content="#09080f">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M5 40 Q25 25 45 40 T95 40 M5 62 Q25 47 45 62 T95 62' fill='none' stroke='%2300e5ff' stroke-width='9'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    :root { --a1: var(--cyan); --a2: var(--purple); --a3: var(--orange); }
+    .sonar { position: relative; width: min(100%, 32rem); aspect-ratio: 1; margin-inline: auto; }
+    .sonar svg { width: 100%; height: 100%; overflow: visible; }
+    .wave { transform-box: fill-box; transform-origin: center; animation: wave 4.8s ease-out infinite; opacity: 0; }
+    .wave.w2 { animation-delay: 1.6s; } .wave.w3 { animation-delay: 3.2s; }
+    @keyframes wave { 0% { opacity: .9; transform: scale(.08); } 85% { opacity: 0; } 100% { opacity: 0; transform: scale(1); } }
+    .current { animation: drift 7s ease-in-out infinite; }
+    .current.c2 { animation-duration: 9s; animation-direction: reverse; }
+    @keyframes drift { 50% { transform: translateX(-18px); } }
+    .contact { animation: blink 4.8s ease-in-out infinite; }
+    .contact.k2 { animation-delay: 1.4s; } .contact.k3 { animation-delay: 2.9s; }
+    @keyframes blink { 0%, 30% { opacity: .15; } 40%, 70% { opacity: 1; } 100% { opacity: .15; } }
+    .depth { position: absolute; left: 50%; bottom: -1.2rem; transform: translateX(-50%); width: 94%; padding: .55rem .8rem; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); font: .74rem/1 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .depth b { color: var(--a3); font-weight: 400; }
+    table.checks { width: 100%; border-collapse: collapse; font-size: .95rem; }
+    table.checks th, table.checks td { text-align: left; padding: .9rem 1rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    table.checks th { font: 700 .7rem/1 var(--display); letter-spacing: .18em; color: var(--a2); }
+    table.checks td:first-child { font-family: var(--mono); color: var(--a1); white-space: nowrap; }
+    table.checks td:last-child { color: var(--muted); }
+    table.checks tr:hover td { background: color-mix(in srgb, var(--a1) 6%, transparent); }
+    .checks-wrap { overflow-x: auto; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 85%, transparent); }
+  </style>
+  <script>
+    window.SITE = {
+      defaultTheme: 'undertow-deep-current',
+      mashups: [
+        { id: 'undertow-deep-current', label: 'DEEP CURRENT', base: 'dystopian-quarantine', accent: 'neosynth-wave' },
+        { id: 'undertow-riptide', label: 'RIPTIDE', base: 'nord', accent: 'cyberpunk-overdrive' },
+        { id: 'undertow-black-water', label: 'BLACK WATER', base: 'cyberdyne-infiltrator', accent: 'synthwave-cruise' }
+      ]
+    };
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="https://cybercore-tech.github.io/" data-brand-phase="0" aria-label="Cybercore Tech home"><span class="brand-emblem">CC</span><span class="brand-name">CYBERCORE <b>/</b> UNDERTOW<small>SECURITY TOOLS</small></span></a>
+    <nav class="main-nav" aria-label="Primary"><a href="#checks">CHECKS</a><a href="#rules">RULES</a><a href="#setup">SETUP</a><a href="#themes">THEMES</a></nav>
+    <div class="theme-picker"><span class="theme-label">THEME</span><button id="themeButton" class="theme-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="themeMenu">LOADING THEMES…</button><div id="themeMenu" class="theme-menu" role="listbox" aria-label="Theme" hidden></div></div>
+  </header>
+
+  <main>
+    <section class="wrap hero">
+      <div>
+        <p class="eyebrow">Rootkit &amp; compromise indicators · Rust · pacman</p>
+        <h1><span class="glitch" data-text="UNDER">UNDER</span><br><em>TOW</em></h1>
+        <p class="tagline">A calm surface. A dangerous current beneath it. Undertow goes looking.</p>
+        <p class="lede">The rkhunter/chkrootkit category, rebuilt in Rust: preload hooks, world-writable system files, and drift in SUID binaries, kernel modules and persistence points — plus a full <code>pacman -Qkk</code> integrity sweep. Detection only: it never deletes or modifies anything it finds.</p>
+        <div class="chips"><span class="chip"><b>◆</b> ≈0.1S FAST CHECKS</span><span class="chip"><b>◆</b> BASELINE DRIFT</span><span class="chip"><b>◆</b> READ-ONLY</span><span class="chip"><b>◆</b> MIT</span></div>
+        <div class="cta"><a class="btn" href="https://github.com/cybercore-tech/undertow">VIEW SOURCE ↗</a><a class="btn ghost" href="#setup">INSTALL</a></div>
+      </div>
+      <div class="sonar reveal" aria-hidden="true">
+        <svg viewBox="0 0 400 400">
+          <defs><clipPath id="clip"><circle cx="200" cy="200" r="186"/></clipPath></defs>
+          <circle cx="200" cy="200" r="186" style="fill:color-mix(in srgb, var(--panel) 75%, transparent);stroke:var(--line)"/>
+          <g clip-path="url(#clip)">
+            <g style="stroke:var(--line)" stroke-dasharray="2 8"><line x1="0" y1="100" x2="400" y2="100"/><line x1="0" y1="160" x2="400" y2="160"/><line x1="0" y1="220" x2="400" y2="220"/><line x1="0" y1="280" x2="400" y2="280"/><line x1="0" y1="340" x2="400" y2="340"/></g>
+            <path class="current" d="M-40 132 Q20 112 80 132 T200 132 T320 132 T440 132" style="fill:none;stroke:var(--a1)" stroke-width="2" opacity=".7"/>
+            <path class="current c2" d="M-40 238 Q20 218 80 238 T200 238 T320 238 T440 238" style="fill:none;stroke:var(--a2)" stroke-width="2" opacity=".75"/>
+            <circle class="wave" cx="200" cy="60" r="330" style="fill:none;stroke:var(--a1)" stroke-width="2"/>
+            <circle class="wave w2" cx="200" cy="60" r="330" style="fill:none;stroke:var(--a1)" stroke-width="2"/>
+            <circle class="wave w3" cx="200" cy="60" r="330" style="fill:none;stroke:var(--a2)" stroke-width="2"/>
+            <g class="contact"><circle cx="128" cy="186" r="7" style="fill:var(--a3)"/><text x="142" y="190" style="fill:var(--a3)" font-family="Share Tech Mono, monospace" font-size="12">SUID +1</text></g>
+            <g class="contact k2"><circle cx="262" cy="272" r="7" style="fill:var(--pink)"/><text x="276" y="276" style="fill:var(--pink)" font-family="Share Tech Mono, monospace" font-size="12">ld.so.preload</text></g>
+            <g class="contact k3"><circle cx="232" cy="330" r="7" style="fill:var(--a1)"/><text x="246" y="334" style="fill:var(--a1)" font-family="Share Tech Mono, monospace" font-size="12">module +1</text></g>
+          </g>
+          <circle cx="200" cy="60" r="9" style="fill:var(--a1)"/>
+          <text x="200" y="38" text-anchor="middle" style="fill:var(--muted)" font-family="Share Tech Mono, monospace" font-size="11" letter-spacing="3">SURFACE</text>
+        </svg>
+        <div class="depth">depth <b id="depthVal">0m</b> · scanning persistence surface…</div>
+      </div>
+    </section>
+
+    <section class="wrap section" id="checks">
+      <div class="section-head reveal"><div><p class="eyebrow">01 / Checks</p><h2>Six currents<br><em>worth fearing.</em></h2></div><p>Indicators, not signatures: unexpected files, permissions and drift — the moves real compromises make. Five fast checks run in about a tenth of a second; the full pacman sweep runs on its own schedule.</p></div>
+      <div class="checks-wrap reveal"><table class="checks">
+        <thead><tr><th>CHECK</th><th>WHAT IT CATCHES</th></tr></thead>
+        <tbody>
+          <tr><td>/etc/ld.so.preload</td><td>Non-empty: the classic userspace-rootkit hook into <code>libc</code> that hides files, processes and connections from <code>ls</code>/<code>ps</code>/<code>ss</code>. Always critical — this file should just be empty.</td></tr>
+          <tr><td>world-writable</td><td>Anything anyone can write in <code>/etc</code>, <code>/usr/bin</code>, <code>/usr/sbin</code> or systemd unit dirs — a live privilege-escalation path.</td></tr>
+          <tr><td>SUID/SGID drift</td><td>A newly appeared SUID/SGID binary — one of the most common privilege-escalation backdoors. Baseline + drift, not a stale allowlist.</td></tr>
+          <tr><td>kernel module drift</td><td>A new module loaded since baseline — the signature move of a kernel-level rootkit.</td></tr>
+          <tr><td>persistence drift</td><td>New files in systemd units, cron, <code>/etc/profile.d</code>, shell rc files or XDG autostart — how malware survives a reboot.</td></tr>
+          <tr><td>pacman -Qkk</td><td>Every installed package's files against pacman's own records. Not every hit is malicious (icon caches cause benign mismatches) — it reports what pacman found, it doesn't guess intent.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="console reveal" style="margin-top:1.4rem">
+        <div class="console-head"><span>● ● ● &nbsp; undertow check</span><strong>SCANNING</strong></div>
+        <pre class="term" data-type><span><span class="t-prompt">❯</span> undertow check</span><span><span class="t-ok">✓</span> ld.so.preload        <span class="t-dim">absent / empty</span></span><span><span class="t-ok">✓</span> world-writable       <span class="t-dim">0 sensitive files</span></span><span><span class="t-mod">!</span> SUID/SGID drift      <span class="t-mod">+ /usr/local/bin/helper</span></span><span><span class="t-ok">✓</span> kernel modules       <span class="t-dim">no new modules</span></span><span><span class="t-mod">!</span> persistence drift    <span class="t-mod">+ ~/.config/autostart/updater.desktop</span></span><span> </span><span class="t-pink">2 indicator(s) — review, then `undertow update`</span><span class="t-dim">exit 1 · 0.11s</span></pre>
+      </div>
+    </section>
+
+    <section class="wrap section" id="rules">
+      <div class="section-head reveal"><div><p class="eyebrow">02 / Ground rules</p><h2>It never<br><em>looks away.</em></h2></div><p>A security check that quietly absorbed today's compromise into tomorrow's "normal" would stop reporting it after the first alert. Undertow won't.</p></div>
+      <div class="grid g3">
+        <div class="card c-orange reveal"><span class="num">◆ STICKY DRIFT</span><h3>REPORTED UNTIL REVIEWED</h3><p><code>check</code> never moves the baseline. Drift is reported on every run until you explicitly <code>update</code>.</p></div>
+        <div class="card c-cyan reveal"><span class="num">◆ HANDS OFF</span><h3>DETECTION ONLY</h3><p>Never deletes, quarantines or modifies anything it finds. You decide what's real.</p></div>
+        <div class="card c-purple reveal"><span class="num">◆ TESTED ON REAL DATA</span><h3>NO SYNTHETIC GUESSES</h3><p>The pacman parser is tested against a real <code>-Qkk</code> warning captured on a live system, and the full drift cycle was verified on scratch dirs first.</p></div>
+      </div>
+    </section>
+
+    <section class="wrap section" id="setup">
+      <div class="section-head reveal"><div><p class="eyebrow">03 / Setup</p><h2>Drop<br><em>the line.</em></h2></div><p>Baseline a known-good system, then check on a timer. Both <code>check</code> and <code>pacman</code> exit non-zero when something's found — built for systemd timers and alerting.</p></div>
+      <div class="grid g2">
+        <div class="reveal"><span class="label">BUILD + RUN</span>
+<pre class="code" data-copy><code>git clone https://github.com/cybercore-tech/undertow
+cd undertow && cargo build --release
+
+undertow init      <span class="c"># SUID / module / persistence baselines</span>
+undertow check     <span class="c"># fast checks, ~0.1s</span>
+undertow update    <span class="c"># accept current state, after review</span>
+undertow pacman    <span class="c"># the slow integrity sweep</span></code></pre></div>
+        <div class="reveal"><span class="label">~/.config/undertow/config.toml</span>
+<pre class="code"><code><span class="c"># enable/disable individual checks and choose which</span>
+<span class="c"># paths are scanned for world-writable files and</span>
+<span class="c"># SUID binaries — full schema in the file itself.</span></code></pre>
+          <ul class="list" style="margin-top:1.2rem"><li><b>Known limit:</b> indicators, not behavior — no de-obfuscation.</li><li><b>Known limit:</b> a determined kernel rootkit can hide its module from <code>lsmod</code>.</li><li><b>Pair with:</b> <a href="https://cybercore-tech.github.io/sigilward/">SigilWard</a> for file content integrity.</li></ul></div>
+      </div>
+    </section>
+
+    <section class="wrap section" id="themes">
+      <div class="section-head reveal"><div><p class="eyebrow">04 / Theme matrix</p><h2>Choose<br><em>your depth.</em></h2></div><p>Every Cybercore palette from the shared schema, grouped by family — plus Undertow's own <b>signature mashups</b>. Your pick follows you across Cybercore sites.</p></div>
+      <div class="theme-strip reveal"><div><span class="label">NOW RUNNING · <span id="themeCount">…</span></span><div class="now" data-active-theme>…</div><div class="recipe" id="themeRecipe"></div></div><div></div><div id="swatches"></div></div>
+    </section>
+
+    <section class="wrap section" style="padding-top:0">
+      <div class="card c-purple related reveal"><div><span class="num">◆ ALSO ON WATCH</span><h3>ARGUS — LIVE FILE INTEGRITY</h3><p>Undertow sweeps for indicators; Argus watches your sensitive files change in real time.</p></div><a class="btn" href="https://cybercore-tech.github.io/argus/">ARGUS ↗</a></div>
+    </section>
+  </main>
+
+  <footer><span>CYBERCORE TECH / UNDERTOW / MIT / © <span id="year"></span></span><span><a href="https://cybercore-tech.github.io/">CYBERCORE-TECH.GITHUB.IO</a> · <a href="https://github.com/cybercore-tech/undertow">SOURCE</a></span></footer>
+
+  <script>
+    (() => { const el = document.getElementById('depthVal'); if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      let d = 0; setInterval(() => { d = (d + 37) % 1200; el.textContent = d + 'm'; }, 900); })();
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
